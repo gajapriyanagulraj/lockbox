@@ -32,10 +32,12 @@ flowchart LR
     C --> D
     D --> E[Actions summary]
     D --> F[GitHub Pages]
-    C --> G{HIGH or CRITICAL?}
+    C --> G{Fixable HIGH or CRITICAL?}
     G -- Yes --> H[Fail workflow]
     G -- No --> I[Release image]
 ```
+
+The report still shows all vulnerabilities. The release gate blocks only HIGH or CRITICAL findings that have a fixed version available, using Trivy's `--ignore-unfixed` option. Unfixed vendor/base-image CVEs remain visible for review without blocking the release path.
 
 ## Local Report Generation
 

@@ -78,7 +78,7 @@ jobs:
             public/
 
       - name: Enforce HIGH/CRITICAL vulnerability gate
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE_NAME:$IMAGE_TAG"
+        run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE_NAME:$IMAGE_TAG"
 
       - name: Configure GitHub Pages
         if: github.event_name == 'push'

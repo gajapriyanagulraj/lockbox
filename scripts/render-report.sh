@@ -25,15 +25,18 @@ COMPONENTS="$(jq '.components // [] | length' "$SBOM_REPORT")"
 AFFECTED_PACKAGES="$(jq '[.Results[]?.Vulnerabilities[]?.PkgName] | unique | length' "$SCAN_REPORT")"
 FIXABLE="$(jq '[.Results[]?.Vulnerabilities[]? | select((.FixedVersion // "") != "")] | length' "$SCAN_REPORT")"
 NOT_FIXED="$((TOTAL - FIXABLE))"
+BLOCKING_CRITICAL="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and ((.FixedVersion // "") != ""))] | length' "$SCAN_REPORT")"
+BLOCKING_HIGH="$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH" and ((.FixedVersion // "") != ""))] | length' "$SCAN_REPORT")"
+BLOCKING_TOTAL="$((BLOCKING_CRITICAL + BLOCKING_HIGH))"
 OS_TARGET="$(jq -r '[.Results[]? | select(.Class == "os-pkgs") | .Target][0] // "not detected"' "$SCAN_REPORT")"
 LANG_TARGETS="$(jq -r '[.Results[]? | select(.Class != "os-pkgs") | .Target] | if length == 0 then "not detected" else join(", ") end' "$SCAN_REPORT")"
 
-if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+if [ "$BLOCKING_TOTAL" -gt 0 ]; then
   GATE_STATUS="FAIL"
-  GATE_MESSAGE="High or critical vulnerabilities were found."
+  GATE_MESSAGE="Fixable high or critical vulnerabilities were found."
 else
   GATE_STATUS="PASS"
-  GATE_MESSAGE="No high or critical vulnerabilities were found."
+  GATE_MESSAGE="No fixable high or critical vulnerabilities were found. Unfixed CVEs are still reported for review."
 fi
 
 TOP_VULNS="$(jq -r '
@@ -185,6 +188,8 @@ cat > "$REPORT_DIR/security-report.md" <<EOF
 | Affected packages | $AFFECTED_PACKAGES |
 | Fix available | $FIXABLE |
 | No fixed version reported | $NOT_FIXED |
+| Blocking fixable critical | $BLOCKING_CRITICAL |
+| Blocking fixable high | $BLOCKING_HIGH |
 | OS target | \`$OS_TARGET\` |
 | Language targets | \`$LANG_TARGETS\` |
 | Vulnerability gate | **$GATE_STATUS** |
@@ -207,6 +212,14 @@ cat > "$REPORT_DIR/security-report.md" <<EOF
 | --- | ---: |
 | Fixed version available | $FIXABLE |
 | No fixed version reported | $NOT_FIXED |
+
+## Release Gate
+
+| Gate Input | Count |
+| --- | ---: |
+| Fixable critical vulnerabilities | $BLOCKING_CRITICAL |
+| Fixable high vulnerabilities | $BLOCKING_HIGH |
+| Total blocking vulnerabilities | $BLOCKING_TOTAL |
 
 ## Affected Scan Targets
 
@@ -274,6 +287,8 @@ cat > "$PUBLIC_DIR/index.html" <<EOF
     <tr><td>Affected packages</td><td>$AFFECTED_PACKAGES</td></tr>
     <tr><td>Fix available</td><td>$FIXABLE</td></tr>
     <tr><td>No fixed version reported</td><td>$NOT_FIXED</td></tr>
+    <tr><td>Blocking fixable critical</td><td>$BLOCKING_CRITICAL</td></tr>
+    <tr><td>Blocking fixable high</td><td>$BLOCKING_HIGH</td></tr>
     <tr><td>OS target</td><td><code>$OS_TARGET</code></td></tr>
     <tr><td>Language targets</td><td><code>$LANG_TARGETS</code></td></tr>
     <tr><td>Vulnerability gate</td><td class="$(printf "%s" "$GATE_STATUS" | tr '[:upper:]' '[:lower:]')">$GATE_STATUS</td></tr>
@@ -285,6 +300,14 @@ cat > "$PUBLIC_DIR/index.html" <<EOF
     <tr><th>Status</th><th>Count</th></tr>
     <tr><td>Fixed version available</td><td>$FIXABLE</td></tr>
     <tr><td>No fixed version reported</td><td>$NOT_FIXED</td></tr>
+  </table>
+
+  <h2>Release Gate</h2>
+  <table>
+    <tr><th>Gate Input</th><th>Count</th></tr>
+    <tr><td>Fixable critical vulnerabilities</td><td>$BLOCKING_CRITICAL</td></tr>
+    <tr><td>Fixable high vulnerabilities</td><td>$BLOCKING_HIGH</td></tr>
+    <tr><td>Total blocking vulnerabilities</td><td>$BLOCKING_TOTAL</td></tr>
   </table>
 
   <h2>Vulnerability Summary</h2>

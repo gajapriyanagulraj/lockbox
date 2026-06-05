@@ -1,0 +1,104 @@
+name: lockbox-supply-chain
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  security-events: write
+  pages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/lockbox
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-scan-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        run: docker build -t "$IMAGE_NAME:$IMAGE_TAG" -t "$IMAGE_NAME:v1" app
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          mkdir -p artifacts reports public
+          trivy image --format cyclonedx --output artifacts/sbom.json "$IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Scan image
+        run: |
+          trivy image --format json --output artifacts/scan-report.json "$IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Render visible security report
+        run: scripts/render-report.sh artifacts/scan-report.json artifacts/sbom.json reports public
+
+      - name: Add report to workflow summary
+        run: cat reports/security-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Highlight top CVEs in workflow UI
+        run: scripts/emit-github-annotations.sh artifacts/scan-report.json 10
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lockbox-security-artifacts
+          path: |
+            artifacts/
+            reports/
+            public/
+
+      - name: Configure GitHub Pages
+        if: github.event_name == 'push'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages report
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy visible report to GitHub Pages
+        if: github.event_name == 'push'
+        uses: actions/deploy-pages@v4
+
+      - name: Enforce HIGH/CRITICAL vulnerability gate
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Push image
+        if: github.event_name == 'push'
+        run: |
+          docker push "$IMAGE_NAME:$IMAGE_TAG"
+          docker push "$IMAGE_NAME:v1"
+
+      - name: Install Cosign
+        if: github.event_name == 'push'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with GitHub OIDC
+        if: github.event_name == 'push'
+        run: |
+          cosign sign --yes "$IMAGE_NAME:$IMAGE_TAG"
+          cosign sign --yes "$IMAGE_NAME:v1"

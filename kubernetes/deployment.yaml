@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lockbox
+  labels:
+    app: lockbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lockbox
+  template:
+    metadata:
+      labels:
+        app: lockbox
+    spec:
+      containers:
+        - name: lockbox
+          image: ghcr.io/gajapriyanagulraj/lockbox:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000

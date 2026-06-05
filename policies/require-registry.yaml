@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-ghcr-registry
+  annotations:
+    policies.kyverno.io/title: Require GHCR Registry
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Only images from ghcr.io are allowed."
+        pattern:
+          spec:
+            "=(ephemeralContainers)":
+              - image: "ghcr.io/*"
+            "=(initContainers)":
+              - image: "ghcr.io/*"
+            containers:
+              - image: "ghcr.io/*"

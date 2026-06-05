@@ -41,7 +41,14 @@ jobs:
         run: docker build -t "$IMAGE_NAME:$IMAGE_TAG" -t "$IMAGE_NAME:v1" app
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+          trivy --version
 
       - name: Generate CycloneDX SBOM
         run: |
@@ -70,6 +77,9 @@ jobs:
             reports/
             public/
 
+      - name: Enforce HIGH/CRITICAL vulnerability gate
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE_NAME:$IMAGE_TAG"
+
       - name: Configure GitHub Pages
         if: github.event_name == 'push'
         uses: actions/configure-pages@v5
@@ -83,9 +93,6 @@ jobs:
       - name: Deploy visible report to GitHub Pages
         if: github.event_name == 'push'
         uses: actions/deploy-pages@v4
-
-      - name: Enforce HIGH/CRITICAL vulnerability gate
-        run: trivy image --severity HIGH,CRITICAL --exit-code 1 "$IMAGE_NAME:$IMAGE_TAG"
 
       - name: Push image
         if: github.event_name == 'push'
